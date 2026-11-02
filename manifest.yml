@@ -1,0 +1,165 @@
+modules:
+  jira:issuePanel:
+    - key: driftwise-issue-panel
+      resource: issue-panel
+      resolver:
+        function: resolver
+      render: native
+      title: Driftwise
+      icon: resource:assets;icon.svg
+  jira:projectPage:
+    - key: driftwise-project-page
+      resource: project-page
+      resolver:
+        function: resolver
+      render: native
+      title: Driftwise
+      icon: resource:assets;icon.svg
+  confluence:contentBylineItem:
+    - key: driftwise-byline
+      resource: byline
+      resolver:
+        function: resolver
+      render: native
+      title: Driftwise
+      tooltip: How closely Jira work follows this page
+  rovo:agent:
+    - key: driftwise-agent
+      name: Driftwise
+      description: Checks Jira work against its Confluence spec and helps the team fix drift before shipping.
+      icon: resource:assets;icon.svg
+      prompt: |
+        You are Driftwise, a delivery reviewer that makes sure Jira work matches its Confluence spec.
+
+        How to work:
+        - When the user asks whether work is ready, what is missing, or what contradicts the spec, call get-spec-drift with the work item key (use the key from the current page if there is one).
+        - If get-spec-drift says a check is running, tell the user it takes about a minute and offer to look again.
+        - For free-form questions about what the spec says ("does the PRD mention refunds?", "which story covers accessibility?"), call get-spec-and-work and answer only from the returned text, quoting it.
+        - Lead with the spec confidence percentage and a one-line verdict. Then list contradictions first, then requirements that are not planned, then partly covered ones. For each, quote what the spec says and what Jira says, and name the work item.
+        - Treat quotesVerified=false findings with care and say the wording should be checked.
+        - Offer concrete next steps: adding the suggested acceptance criterion (add-acceptance-criterion) or creating a work item for a missing requirement (create-follow-up-work). Only call these after the user agrees, and confirm what you changed with the work item key.
+        - Never invent requirements, quotes or work items. If there is no spec linked, say so and explain how to link one.
+        Keep answers short and scannable.
+      conversationStarters:
+        - Is this epic ready to ship against its spec?
+        - What does our planned work contradict in the spec?
+        - Which spec requirements have no work planned?
+      actions:
+        - get-spec-drift
+        - get-spec-and-work
+        - add-acceptance-criterion
+        - create-follow-up-work
+  action:
+    - key: get-spec-drift
+      name: Get spec drift report
+      function: rovo-get-drift
+      actionVerb: GET
+      description: Returns the Driftwise report for a Jira work item - spec confidence, contradicted, missing and partly covered requirements with verified quotes, work outside the spec, and open questions. Starts a new check when none exists or the spec or work changed.
+      inputs:
+        issueKey:
+          title: Work item key
+          type: string
+          description: The Jira work item key, for example SCRUM-1. Usually an epic whose spec is linked.
+    - key: get-spec-and-work
+      name: Read spec and planned work
+      function: rovo-get-spec-and-work
+      actionVerb: GET
+      description: Returns the full text of the Confluence spec linked to a Jira work item, together with the work item and its child items, so you can answer detailed questions about what the spec says.
+      inputs:
+        issueKey:
+          title: Work item key
+          type: string
+          description: The Jira work item key, for example SCRUM-1.
+    - key: add-acceptance-criterion
+      name: Add acceptance criterion
+      function: rovo-add-criterion
+      actionVerb: UPDATE
+      description: Appends a testable acceptance criterion to the Acceptance criteria section of a Jira work item description.
+      inputs:
+        issueKey:
+          title: Work item key
+          type: string
+          description: The Jira work item to update, for example SCRUM-4.
+        criterion:
+          title: Acceptance criterion
+          type: string
+          description: One testable sentence, usually the suggested criterion from the drift report.
+    - key: create-follow-up-work
+      name: Create work item for a missing requirement
+      function: rovo-create-work
+      actionVerb: CREATE
+      description: Creates a Jira work item for a spec requirement that has no planned work, under the same epic.
+      inputs:
+        issueKey:
+          title: Related work item key
+          type: string
+          description: The epic or work item the new item relates to.
+        summary:
+          title: Summary
+          type: string
+          description: Short summary of the missing requirement.
+        details:
+          title: Details
+          type: string
+          description: The spec quote and acceptance criterion for the new work item.
+  consumer:
+    - key: driftwise-analysis-consumer
+      queue: driftwise-analysis
+      function: worker
+  function:
+    - key: resolver
+      handler: index.resolverHandler
+    - key: worker
+      handler: index.workerHandler
+      timeoutSeconds: 300
+    - key: seed
+      handler: index.seedHandler
+    - key: rovo-get-drift
+      handler: index.rovoGetDrift
+    - key: rovo-get-spec-and-work
+      handler: index.rovoGetSpecAndWork
+    - key: rovo-add-criterion
+      handler: index.rovoAddCriterion
+    - key: rovo-create-work
+      handler: index.rovoCreateWork
+  webtrigger:
+    - key: driftwise-seed
+      function: seed
+      response:
+        type: dynamic
+  llm:
+    - key: driftwise-llm
+      model:
+        - claude
+resources:
+  - key: issue-panel
+    path: src/frontend/issue-panel.jsx
+  - key: project-page
+    path: src/frontend/project-page.jsx
+  - key: byline
+    path: src/frontend/byline.jsx
+  - key: assets
+    path: assets
+permissions:
+  scopes:
+    - read:jira-work
+    - write:jira-work
+    - read:jira-user
+    - storage:app
+    - read:page:confluence
+    - write:page:confluence
+    - read:space:confluence
+    - search:confluence
+    - read:confluence-content.all
+    - read:graph:project:jira
+    - read:graph:space:confluence
+    - read:graph:page:confluence
+app:
+  runtime:
+    name: nodejs22.x
+  compatibility:
+    jira:
+      required: true
+    confluence:
+      required: false
+  id: REPLACE_WITH_YOUR_APP_ID  # set by forge register
