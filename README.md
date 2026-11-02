@@ -46,7 +46,7 @@ Key files: `src/lib/analysis.js` (prompt, scoring, quote verification), `src/lib
 
 ## Try it
 
-1. Install Driftwise on your site (Jira, plus Confluence for the byline).
+1. [Install Driftwise](https://steven6b16.github.io/driftwise/install/) on your site (Jira, plus Confluence for the byline).
 2. Open an epic that links its Confluence spec (a web link or a URL in the description).
 3. Open the **Driftwise** panel and select **Check against spec**.
 
