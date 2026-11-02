@@ -46,9 +46,12 @@ Key files: `src/lib/analysis.js` (prompt, scoring, quote verification), `src/lib
 
 ## Try it
 
-1. [Install Driftwise](https://steven6b16.github.io/driftwise/install/) on your site (Jira, plus Confluence for the byline).
-2. Open an epic that links its Confluence spec (a web link or a URL in the description).
-3. Open the **Driftwise** panel and select **Check against spec**.
+1. [Install Driftwise](https://steven6b16.github.io/driftwise/install/) on your site (Jira, and connect Confluence when asked).
+2. Open any Jira software space → **Driftwise** tab (under **More** in the space navigation).
+3. Select **Load sample spec and epic**. Driftwise creates a sample PRD in Confluence and an epic with seven stories, then checks them. Results appear in about a minute.
+4. Open the epic → **Apps → Driftwise** to see every finding, the verified quotes and the one-click fixes.
+
+To use your own work: link a Confluence page from an epic (a web link or a URL in the description), open the Driftwise panel and select **Check against spec**.
 
 ## Develop
 

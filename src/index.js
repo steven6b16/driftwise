@@ -1,5 +1,6 @@
 import Resolver from '@forge/resolver';
 import { Queue } from '@forge/events';
+import api, { route } from '@forge/api';
 import { kvs } from '@forge/kvs';
 import {
   addComment, appendAcceptanceCriterion, createFollowUp, getIssue, getPage, linkSpecPage, searchIssues, searchPages,
@@ -176,6 +177,35 @@ resolver.define('projectOverview', async ({ context }) => {
   const overall = reqs ? Math.round((100 * (totals.covered + 0.5 * totals.partial)) / reqs) : null;
   const spend = await getSpend();
   return { projectKey, rows, totals, overall, spend: { usd: spend.usd, budget: MONTHLY_BUDGET_USD } };
+});
+
+// One click for new users and judges: create a sample spec in Confluence and an
+// epic with stories in this Jira space, then start a check on it.
+resolver.define('loadSample', async ({ context }) => {
+  const projectKey = context?.extension?.project?.key;
+  const res = await api.asUser().requestJira(route`/rest/api/3/mypermissions?projectKey=${projectKey}&permissions=CREATE_ISSUES`);
+  const perms = await res.json();
+  if (!perms?.permissions?.CREATE_ISSUES?.havePermission) {
+    return { ok: false, message: 'You need permission to create work items in this space to load the sample.' };
+  }
+  try {
+    const out = await seedDemo('sample', { projectKey });
+    if (out.projectKey !== projectKey) {
+      return { ok: false, message: 'This space has no Epic and Story work types, so the sample was not created here.' };
+    }
+    const index = (await kvs.get(`project:${projectKey}`)) || [];
+    if (!index.includes(out.epic)) await kvs.set(`project:${projectKey}`, [out.epic, ...index].slice(0, 200));
+    await queueAnalysis(out.epic);
+    return { ok: true, epic: out.epic, page: out.page };
+  } catch (e) {
+    const msg = String(e.message || e);
+    return {
+      ok: false,
+      message: /confluence|wiki|space/i.test(msg)
+        ? 'Driftwise could not create the sample spec. Connect Driftwise to Confluence on this site and try again.'
+        : `Could not load the sample: ${msg.slice(0, 160)}`,
+    };
+  }
 });
 
 resolver.define('startFor', async ({ payload }) => {

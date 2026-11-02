@@ -1,6 +1,6 @@
 import api, { route } from '@forge/api';
 import {
-  createIssueRaw, createPage, findPageByTitle, getIssueTypes, listSpaces, searchIssues,
+  createIssueRaw, createPage, createSpace, findPageByTitle, getIssueTypes, listSpaces, searchIssues,
 } from './atlassian';
 
 const PRD_TITLE = 'Checkout v2 — Product requirements';
@@ -71,11 +71,12 @@ const adf = (text, url) => ({
   ],
 });
 
-async function pickProject() {
+async function pickProject(preferred) {
   const res = await api.asApp().requestJira(route`/rest/api/3/project/search?maxResults=50&orderBy=key`);
   const data = await res.json();
   const projects = (data.values || []).filter((x) => x.projectTypeKey === 'software');
-  for (const p of [projects.find((x) => x.key === 'SCRUM'), ...projects].filter(Boolean)) {
+  const first = projects.find((x) => x.key === preferred) || projects.find((x) => x.key === 'SCRUM');
+  for (const p of [first, ...projects].filter(Boolean)) {
     const types = await getIssueTypes(p.key, 'app').catch(() => []);
     const epic = types.find((t) => t.hierarchyLevel === 1);
     const story = types.find((t) => t.hierarchyLevel === 0 && !t.subtask && /story/i.test(t.name))
@@ -85,14 +86,23 @@ async function pickProject() {
   throw new Error('No software project with epics and stories found');
 }
 
-export async function seedDemo(mode) {
+export async function seedDemo(mode, opts = {}) {
   const spaces = await listSpaces('app');
-  const space = spaces.find((s) => s.type === 'global') || spaces[0];
+  let space = spaces.find((s) => s.type === 'global') || spaces[0];
+  const label = { video: 'driftwise-video', sample: 'driftwise-sample' }[mode] || 'driftwise-demo';
+  if (mode === 'video') {
+    space = spaces.find((s) => s.key === 'SPECS');
+    if (!space) space = await createSpace('SPECS', 'Product Specs', 'app');
+  }
+  if (mode === 'sample') {
+    space = spaces.find((s) => s.key === 'DWSAMPLE');
+    if (!space) space = await createSpace('DWSAMPLE', 'Driftwise sample specs', 'app');
+  }
   if (!space) throw new Error('No Confluence space found');
   let page = await findPageByTitle(space.id, PRD_TITLE, 'app');
   if (!page) page = await createPage(space.id, PRD_TITLE, PRD, 'app');
 
-  const { key: projectKey, epicType, storyType } = await pickProject();
+  const { key: projectKey, epicType, storyType } = await pickProject(opts.projectKey);
   if (mode === 'unlinked') {
     const e = await createIssueRaw({
       project: { key: projectKey },
@@ -103,15 +113,19 @@ export async function seedDemo(mode) {
     }, 'app');
     return { unlinkedEpic: e.key };
   }
-  const existing = await searchIssues(`project = ${projectKey} AND labels = driftwise-demo`, 'app', 50);
-  if (existing.length) return { page, projectKey, note: 'already seeded', issues: existing.map((i) => i.key) };
+  const existing = await searchIssues(`project = ${projectKey} AND labels = ${label}`, 'app', 50);
+  if (existing.length) {
+    const top = await searchIssues(`project = ${projectKey} AND labels = ${label} AND parent IS EMPTY`, 'app', 5).catch(() => []);
+    const epicHit = top[0] || existing[0];
+    return { page, projectKey, note: 'already seeded', epic: epicHit.key, issues: existing.map((i) => i.key) };
+  }
 
 
   const epic = await createIssueRaw({
     project: { key: projectKey },
     issuetype: { id: epicType.id },
     summary: 'Checkout v2',
-    labels: ['driftwise-demo'],
+    labels: [label],
     description: adf('Rebuild checkout to cut abandonment. Requirements live in the Confluence PRD.', page.url),
   }, 'app');
 
@@ -131,7 +145,7 @@ export async function seedDemo(mode) {
       project: { key: projectKey },
       issuetype: { id: storyType.id },
       summary: s.summary,
-      labels: ['driftwise-demo'],
+      labels: [label],
       parent: { key: epic.key },
       description: adf(s.description),
     }, 'app');

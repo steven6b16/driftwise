@@ -49,6 +49,7 @@ function App() {
   const [error, setError] = useState(null);
   const [site, setSite] = useState('');
   const [busy, setBusy] = useState(null);
+  const [sample, setSample] = useState(null);
   const timer = useRef(null);
 
   const load = useCallback(async () => {
@@ -77,6 +78,19 @@ function App() {
     try {
       await invoke('startFor', { issueKey: key });
       await load();
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const loadSample = async () => {
+    setBusy('sample');
+    try {
+      const res = await invoke('loadSample');
+      setSample(res);
+      await load();
+    } catch (e) {
+      setSample({ ok: false, message: String(e.message || e) });
     } finally {
       setBusy(null);
     }
@@ -176,6 +190,33 @@ function App() {
         <Tile label="Partly covered" value={totals.partial} />
         <Tile label="Epics checked" value={`${checked.length}/${rows.length}`} />
       </Inline>
+
+      {sample?.ok && (
+        <SectionMessage appearance="success" title={`Sample loaded: ${sample.epic}`}>
+          <Stack space="space.100">
+            <Text>
+              Driftwise created the spec <Link href={sample.page?.url} openNewTab>{sample.page?.title}</Link> in Confluence and the epic <Link href={`${site}/browse/${sample.epic}`}>{sample.epic}</Link> with seven stories, and started a check. Results appear here in under a minute. Open the epic to see every finding and the one-click fixes.
+            </Text>
+          </Stack>
+        </SectionMessage>
+      )}
+      {sample && !sample.ok && (
+        <SectionMessage appearance="error" title="The sample was not loaded">
+          <Text>{sample.message}</Text>
+        </SectionMessage>
+      )}
+      {checked.length === 0 && !sample?.ok && (
+        <SectionMessage appearance="information" title="New to Driftwise? Try it on sample data">
+          <Stack space="space.100">
+            <Text>
+              Load a sample product spec into Confluence and an epic with seven stories into this space. Some of the stories quietly contradict the spec, so you can see what Driftwise catches in about a minute. Nothing else in your site is changed.
+            </Text>
+            <Inline>
+              <LoadingButton appearance="primary" isLoading={busy === 'sample'} onClick={loadSample}>Load sample spec and epic</LoadingButton>
+            </Inline>
+          </Stack>
+        </SectionMessage>
+      )}
 
       {totals.contradicted > 0 && (
         <SectionMessage appearance="warning" title={`${totals.contradicted} requirement${totals.contradicted > 1 ? 's are' : ' is'} contradicted by planned work`}>
